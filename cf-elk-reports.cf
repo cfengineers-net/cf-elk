@@ -1,0 +1,129 @@
+body common control {
+	bundlesequence => { "cf_elk:cf_elk_reports" };
+	inputs => { "$(sys.workdir)/inputs/lib/3.6/stdlib.cf" };
+}
+
+body file control {
+	namespace => "cf_elk";
+}
+
+bundle agent cf_elk_reports {
+
+	methods:
+		"cf_elk_reports_init" usebundle => cf_elk_reports_init;
+		"cf_elk_report_allclasses" usebundle => cf_elk_report_allclasses;
+		"cf_elk_report_software_packages" usebundle => cf_elk_report_software_packages;
+		"cf_elk_report_open_ports" usebundle => cf_elk_report_open_ports;
+}
+
+bundle agent cf_elk_reports_init {
+	vars:
+		"subdirs" slist => { "log", "state", "work" };
+
+	files:
+		"$(sys.workdir)/cf-elk/."
+			create => "true",
+			perms => default:mog("0700", "root", "root");
+
+		"$(sys.workdir)/cf-elk/$(subdirs)/."
+			create => "true",
+			perms => default:mog("0700", "root", "root");
+}
+
+######
+
+bundle agent cf_elk_report_open_ports {
+
+	vars:
+		"filename" string => "$(sys.workdir)/cf-elk/work/cf_elk_report_open_ports.dat";
+		"ignore" string => "\s*";
+
+	classes:
+		"cf_elk_have_monitor_env_data" expression => fileexists("$(sys.workdir)/state/env_data");
+
+	files:
+		"$(sys.workdir)/cf-elk/work/cf_elk_report_open_ports.dat"
+			create => "true",
+			edit_defaults => default:empty,
+			perms => default:mog("0600", "root", "root"),
+			edit_line => cf_elk_edit_line_create_open_ports_state;
+	
+	methods:
+		"$(this.bundle)" usebundle => cf_elk_report_generic_diff("$(this.bundle)");
+}
+
+bundle edit_line cf_elk_edit_line_create_open_ports_state {
+	vars:
+		"_protos" slist => { "tcp4", "tcp6", "udp4", "udp6" };
+		"_$(_protos)_ports" slist => getindices("mon.$(_protos)_port_addr");
+
+	insert_lines:
+		"$(_protos),$(_$(_protos)_ports),$(mon.$(_protos)_port_addr[$(_$(_protos)_ports)])"
+			ifvarclass => isvariable("mon.$(_protos)_port_addr[$(_$(_protos)_ports)]");
+}
+
+##############################################
+
+bundle agent cf_elk_report_allclasses {
+	vars:
+		"filename" string => "$(sys.workdir)/state/allclasses.txt";
+		"ignore" string => "_\S+|Yr\d{4}|Day\d{1,3}|GMT_\S+|Hr\d{2}(_\S{2})?|Min\d{2}(_\d{2})?|any|Afternoon";
+
+	methods:
+		"$(this.bundle)" usebundle => cf_elk_report_generic_diff("$(this.bundle)");
+}
+
+#######
+
+bundle agent cf_elk_report_software_packages {
+	vars:
+		"filename" string => "$(sys.workdir)/state/software_packages.csv";
+		"ignore" string => "\s*";
+
+	methods:
+		"$(this.bundle)" usebundle => cf_elk_report_generic_diff("$(this.bundle)");
+}
+
+##########
+
+bundle agent cf_elk_report_generic_diff(b) {
+	classes:
+		"cf_elk_report_generic_diff_file_exists" expression => fileexists("$($(b).filename)");
+
+	files:
+		cf_elk_report_generic_diff_file_exists::
+			"$(sys.workdir)/cf-elk/state/$(b).dat.cur"
+				copy_from => default:local_dcp("$($(b).filename)"),
+				classes => default:if_repaired("$(b)_updated");
+
+			"$(sys.workdir)/cf-elk/log/$(b).log"
+				create => "true",
+				perms => default:mog("0600","root","root"),
+				ifvarclass => "$(b)_updated",
+				edit_line => cf_elk_edit_line_generic_diff("$(b)");
+
+			"$(sys.workdir)/cf-elk/state/$(b).dat.prev"
+				ifvarclass => "$(b)_updated",
+				copy_from => default:local_dcp("$(sys.workdir)/cf-elk/state/$(b).dat.cur");
+}
+
+bundle edit_line cf_elk_edit_line_generic_diff(b) {
+	vars:
+		"_cur" slist => readstringlist("$(sys.workdir)/cf-elk/state/$(b).dat.cur", "#[^\n]*", "\n", "99999999", "99999999");
+		"_prev" slist => readstringlist("$(sys.workdir)/cf-elk/state/$(b).dat.prev", "#[^\n]*", "\n", "99999999", "99999999");
+		"_ts" int => now();
+		"_ignore" string => "$($(b).ignore)";
+
+	insert_lines:
+		"$(_ts),$(b),+,$(_cur)"
+			ifvarclass => and(
+				not(regcmp("^($(_ignore))$","$(_cur)")),
+				not(regline("^$(_cur)$", "$(sys.workdir)/cf-elk/state/$(b).dat.prev"))
+			);
+
+		"$(_ts),$(b),-,$(_prev)"
+			ifvarclass => and(
+				not(regcmp("^($(_ignore))$","$(_prev)")),
+				not(regline("^$(_prev)$", "$(sys.workdir)/cf-elk/state/$(b).dat.cur"))
+			);
+}
