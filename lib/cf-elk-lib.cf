@@ -24,7 +24,7 @@ bundle agent cf_elk_report_cfprocs {
 	files:
 		"$(filename)"
 			create => "true",
-			edit_defaults => default:empty,
+			edit_defaults => cf_elk_empty,
 			perms => default:mog("0600", "root", "root"),
 			edit_line => cf_elk_edit_line_create_cfprocs_state;
 	
@@ -65,7 +65,7 @@ bundle agent cf_elk_report_open_ports {
 	files:
 		"$(filename)"
 			create => "true",
-			edit_defaults => default:empty,
+			edit_defaults => cf_elk_empty,
 			perms => default:mog("0600", "root", "root"),
 			edit_line => cf_elk_edit_line_create_open_ports_state;
 	
@@ -96,6 +96,17 @@ bundle agent cf_elk_report_allclasses {
 
 #######
 
+bundle agent cf_elk_report_software_patches_avail {
+	vars:
+		"filename" string => "$(sys.workdir)/state/software_patches_avail.csv";
+		"ignore" string => "\s*";
+
+	methods:
+		"$(this.bundle)" usebundle => cf_elk_report_generic_diff("$(this.bundle)");
+}
+
+#######
+
 bundle agent cf_elk_report_software_packages {
 	vars:
 		"filename" string => "$(sys.workdir)/state/software_packages.csv";
@@ -110,10 +121,15 @@ bundle agent cf_elk_report_software_packages {
 
 bundle agent cf_elk_report_generic_diff(b) {
 	classes:
-		"cf_elk_report_generic_diff_file_exists" expression => fileexists("$($(b).filename)");
+		any::
+			"cf_elk_report_generic_diff_file_exists" expression => fileexists("$($(b).filename)");
+
+		cf_elk_report_generic_diff_file_exists::
+			"cf_elk_report_generic_diff_has_size" expression => isgreaterthan(filesize("$($(b).filename)"), "0");
+
 
 	files:
-		cf_elk_report_generic_diff_file_exists::
+		cf_elk_report_generic_diff_has_size::
 			"$(sys.workdir)/cf-elk/state/$(b).dat.cur"
 				copy_from => default:local_dcp("$($(b).filename)"),
 				classes => default:if_repaired("$(b)_updated");
@@ -122,6 +138,7 @@ bundle agent cf_elk_report_generic_diff(b) {
 				create => "true",
 				perms => default:mog("0600","root","root"),
 				ifvarclass => "$(b)_updated",
+				edit_defaults => cf_elk_no_backup,
 				edit_line => cf_elk_edit_line_generic_diff("$(b)");
 
 			"$(sys.workdir)/cf-elk/state/$(b).dat.prev"
@@ -169,4 +186,18 @@ bundle edit_line cf_elk_edit_line_generic_diff(b) {
 				not(regcmp("^($(_ignore))$","$(_prev)")),
 				not(regline(concat("^",escape("$(_prev)"),"$"), "$(sys.workdir)/cf-elk/state/$(b).dat.cur"))
 			);
+}
+
+
+#####################################
+
+body edit_defaults cf_elk_no_backup {
+      edit_backup => "false";
+      max_file_size => "99999999999";
+}
+
+body edit_defaults cf_elk_empty {
+      empty_file_before_editing => "true";
+      edit_backup => "false";
+      max_file_size => "99999999999";
 }
