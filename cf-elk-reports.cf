@@ -8,11 +8,13 @@ body file control {
 }
 
 bundle agent cf_elk_reports {
+	
+	# NB: Need to add routine to check that the files read by generic methods are non-zero,
+	# as it will use previous values unless the file is found (slists are not emptied)
 
 	methods:
 		"cf_elk_report_init" usebundle => cf_elk_report_init;
-#		"cf_elk_report_rootprocs" usebundle => cf_elk_report_rootprocs;
-#		"cf_elk_report_otherprocs" usebundle => cf_elk_report_otherprocs;
+		"cf_elk_report_cfprocs" usebundle => cf_elk_report_cfprocs;
 		"cf_elk_report_allclasses" usebundle => cf_elk_report_allclasses;
 		"cf_elk_report_software_packages" usebundle => cf_elk_report_software_packages;
 		"cf_elk_report_open_ports" usebundle => cf_elk_report_open_ports;

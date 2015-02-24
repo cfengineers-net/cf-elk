@@ -16,6 +16,41 @@ bundle agent cf_elk_report_init {
 			perms => default:mog("0700", "root", "root");
 }
 
+bundle agent cf_elk_report_cfprocs {
+	vars:
+		"filename" string => "$(sys.workdir)/cf-elk/work/cf_elk_report_cfprocs.dat";
+		"ignore" string => "\s*";
+
+	files:
+		"$(filename)"
+			create => "true",
+			edit_defaults => default:empty,
+			perms => default:mog("0600", "root", "root"),
+			edit_line => cf_elk_edit_line_create_cfprocs_state;
+	
+	methods:
+		"$(this.bundle)" usebundle => cf_elk_report_generic_diff("$(this.bundle)");
+}
+
+bundle edit_line cf_elk_edit_line_create_cfprocs_state {
+	
+	vars:
+		"d1" int => readstringarrayidx("procs","$(sys.workdir)/state/cf_procs","#[^\n]*", "\n","99999999999", "99999999999");
+		"split" slist => splitstring("$(procs[0][0])","\h+","100");
+		"cols" int => length("split");
+		"indices" slist => getindices("procs");
+		"num_ignore_cols" string => format("%d",eval("$(cols)-2", "math", "infix"));
+		#"cmd_ignore" string => "\[.*\]";
+		"cmd_ignore" string => "\s+";
+
+	classes:
+		"matched_$(indices)" expression => regextract("^(\S+)\s+(\S+\s+){$(num_ignore_cols)}(.*)","$(procs[$(indices)][0])","arr_$(indices)");
+	
+	insert_lines:
+			"\"$(arr_$(indices)[1])\",\"$(arr_$(indices)[3])\""
+				ifvarclass => not(or(strcmp("$(indices)","0"),regcmp("^$(cmd_ignore)$", "$(arr_$(indices)[3])")));
+}
+
 ######
 
 bundle agent cf_elk_report_open_ports {
@@ -28,7 +63,7 @@ bundle agent cf_elk_report_open_ports {
 		"cf_elk_have_monitor_env_data" expression => fileexists("$(sys.workdir)/state/env_data");
 
 	files:
-		"$(sys.workdir)/cf-elk/work/cf_elk_report_open_ports.dat"
+		"$(filename)"
 			create => "true",
 			edit_defaults => default:empty,
 			perms => default:mog("0600", "root", "root"),
@@ -69,29 +104,9 @@ bundle agent cf_elk_report_software_packages {
 	methods:
 		"$(this.bundle)" usebundle => cf_elk_report_generic_diff("$(this.bundle)");
 }
+
 ######
 
-bundle agent cf_elk_report_rootprocs {
-	vars:
-		"filename" string => "$(sys.workdir)/state/cf_rootprocs";
-		"ignore" string => "USER.*";
-
-	methods:
-		"$(this.bundle)" usebundle => cf_elk_report_generic_diff("$(this.bundle)");
-
-}
-
-bundle agent cf_elk_report_otherprocs {
-	vars:
-		"filename" string => "$(sys.workdir)/state/cf_otherprocs";
-		"ignore" string => "USER.*";
-
-	methods:
-		"$(this.bundle)" usebundle => cf_elk_report_generic_diff("$(this.bundle)");
-
-}
-
-##########
 
 bundle agent cf_elk_report_generic_diff(b) {
 	classes:
@@ -114,7 +129,7 @@ bundle agent cf_elk_report_generic_diff(b) {
 				copy_from => default:local_dcp("$(sys.workdir)/cf-elk/state/$(b).dat.cur");
 }
 
-bundle edit_line cf_elk_edit_line_generic_diff(b) {
+bundle edit_line cf_elk_edit_line_generic_diff_old(b) {
 	vars:
 		"_cur" slist => readstringlist("$(sys.workdir)/cf-elk/state/$(b).dat.cur", "#[^\n]*", "\n", "99999999", "99999999");
 		"_prev" slist => readstringlist("$(sys.workdir)/cf-elk/state/$(b).dat.prev", "#[^\n]*", "\n", "99999999", "99999999");
@@ -132,5 +147,26 @@ bundle edit_line cf_elk_edit_line_generic_diff(b) {
 			ifvarclass => and(
 				not(regcmp("^($(_ignore))$","$(_prev)")),
 				not(regline("^$(_prev)$", "$(sys.workdir)/cf-elk/state/$(b).dat.cur"))
+			);
+}
+
+bundle edit_line cf_elk_edit_line_generic_diff(b) {
+	vars:
+		"_cur" slist => readstringlist("$(sys.workdir)/cf-elk/state/$(b).dat.cur", "#[^\n]*", "\n", "99999999", "99999999");
+		"_prev" slist => readstringlist("$(sys.workdir)/cf-elk/state/$(b).dat.prev", "#[^\n]*", "\n", "99999999", "99999999");
+		"_ts" int => now();
+		"_ignore" string => "$($(b).ignore)";
+
+	insert_lines:
+		"$(_ts),$(b),+,$(_cur)"
+			ifvarclass => and(
+				not(regcmp("^($(_ignore))$","$(_cur)")),
+				not(regline(concat("^",escape("$(_cur)"),"$"), "$(sys.workdir)/cf-elk/state/$(b).dat.prev"))
+			);
+
+		"$(_ts),$(b),-,$(_prev)"
+			ifvarclass => and(
+				not(regcmp("^($(_ignore))$","$(_prev)")),
+				not(regline(concat("^",escape("$(_prev)"),"$"), "$(sys.workdir)/cf-elk/state/$(b).dat.cur"))
 			);
 }
