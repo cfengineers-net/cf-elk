@@ -135,6 +135,10 @@ bundle agent cf_elk_report_generic_diff(b) {
 				classes => default:if_repaired("$(b)_updated");
 
 			"$(sys.workdir)/cf-elk/log/$(b).log"
+				ifvarclass => "$(b)_updated",
+			  rename => default:rotate("999");
+
+			"$(sys.workdir)/cf-elk/log/$(b).log"
 				create => "true",
 				perms => default:mog("0600","root","root"),
 				ifvarclass => "$(b)_updated",
