@@ -39,16 +39,16 @@ bundle edit_line cf_elk_edit_line_create_cfprocs_state {
 		"split" slist => splitstring("$(procs[0][0])","\h+","100");
 		"cols" int => length("split");
 		"indices" slist => getindices("procs");
-		"num_ignore_cols" string => format("%d",eval("$(cols)-2", "math", "infix"));
+		"num_ignore_cols" string => format("%d",eval("$(cols)-3", "math", "infix"));
 		#"cmd_ignore" string => "\[.*\]";
 		"cmd_ignore" string => "\s+";
 
 	classes:
-		"matched_$(indices)" expression => regextract("^(\S+)\s+(\S+\s+){$(num_ignore_cols)}(.*)","$(procs[$(indices)][0])","arr_$(indices)");
+		"matched_$(indices)" expression => regextract("^(\S+)\s+(\d+)\s+(\S+\s+){$(num_ignore_cols)}(.*)","$(procs[$(indices)][0])","arr_$(indices)");
 	
 	insert_lines:
-			"\"$(arr_$(indices)[1])\",\"$(arr_$(indices)[3])\""
-				ifvarclass => not(or(strcmp("$(indices)","0"),regcmp("^$(cmd_ignore)$", "$(arr_$(indices)[3])")));
+			"{\"owner\":\"$(arr_$(indices)[1])\",\"pid\":\"$(arr_$(indices)[2])\",\"cmd\":\"$(arr_$(indices)[4])\"}"
+				ifvarclass => not(or(strcmp("$(indices)","0"),regcmp("^$(cmd_ignore)$", "$(arr_$(indices)[4])")));
 }
 
 ######
