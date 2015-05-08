@@ -1,0 +1,11 @@
+body file control {
+	namespace => "cf_elk";
+}
+
+body common control {
+	bundlesequence => { "cf_elk:cf_elk_config" };
+}
+
+bundle agent cf_elk_config {
+	
+}
